@@ -599,7 +599,7 @@ end
 -- ============================================================
 local function selectSlot(slotNumber)
     local ok = pcall(function()
-        Event:FireServer(65, "SelectSlot", slotNumber)
+        Event:FireServer(66, "SelectSlot", slotNumber)
     end)
     if ok then print("เลือก slot", slotNumber) end
     return ok
@@ -607,7 +607,7 @@ end
 
 local function placeUnitAt(slotNumber, targetCFrame)
     local ok = pcall(function()
-        Event:FireServer(64, "PlaceGameUnit", slotNumber, targetCFrame)
+        Event:FireServer(65, "PlaceGameUnit", slotNumber, targetCFrame)
     end)
     if ok then print("วางตัวละคร slot", slotNumber, "ที่", targetCFrame.Position) end
     return ok
