@@ -1,0 +1,743 @@
+repeat task.wait() until game:IsLoaded()
+task.wait(15)
+local player = game.Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Event = ReplicatedStorage.RemoteEvents.ReplicaSignal
+local GuiService = game:GetService("GuiService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- ============================================================
+--  CONFIG: ตำแหน่งวาง
+-- ============================================================
+local SPACING = 3
+
+local SlotStartPos = {
+    [1] = Vector3.new(3092.0051269531, 1798.9315185547, 3373.5319824219),
+    [2] = Vector3.new(3086.390625,     1798.9315185547, 3374.0893554688),
+    [3] = Vector3.new(3091.9672851562, 1798.9315185547, 3367.8205566406),
+}
+
+local ExtraPositions = {
+    [1] = {
+        CFrame.new(3098.9345703125, 1798.9315185547, 3256.9147949219, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+    },
+    [2] = {
+        CFrame.new(3098.4919433594, 1798.9315185547, 3253.6459960938, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+    },
+    [3] = {
+        CFrame.new(3086.21875, 1798.9315185547, 3369.998046875, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+        CFrame.new(3086.0183105469, 1798.9315185547, 3366.2658691406, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+    },
+}
+
+local DeferredPlacements = {
+    { slot = 2, cframe = CFrame.new(3089.3405761719, 1798.9315185547, 3361.1306152344, 1, 0, 0, 0, 1, 0, 0, 0, 1) },
+}
+
+local PlacementQueue = {}
+
+for _, slot in ipairs({1, 2}) do
+    local startPos = SlotStartPos[slot]
+    for i = 0, 3 do
+        local pos = startPos + Vector3.new(0, 0, i * SPACING)
+        table.insert(PlacementQueue, {
+            slot = slot,
+            cframe = CFrame.new(pos.X, pos.Y, pos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        })
+    end
+    if ExtraPositions[slot] then
+        for _, cf in ipairs(ExtraPositions[slot]) do
+            table.insert(PlacementQueue, { slot = slot, cframe = cf })
+        end
+    end
+end
+
+do
+    local startPos = SlotStartPos[3]
+    for i = 0, 3 do
+        local pos = startPos + Vector3.new(0, 0, i * SPACING)
+        table.insert(PlacementQueue, {
+            slot = 3,
+            cframe = CFrame.new(pos.X, pos.Y, pos.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        })
+    end
+    if ExtraPositions[3] then
+        for _, cf in ipairs(ExtraPositions[3]) do
+            table.insert(PlacementQueue, { slot = 3, cframe = cf })
+        end
+    end
+end
+
+local CHECK_ICON = "rbxassetid://139144590557777"
+local CROSS_ICON = "rbxassetid://89701503974482"
+
+local SETTINGS_TO_ENABLE = {
+    "Auto-Upgrade Placed Units",
+    "Strict Auto-Upgrade Priority",
+    "Auto Abilities on Placement",
+    "Auto-Place Phantoms",
+    "Auto Skip Waves",
+    "Auto Retry",
+}
+
+-- โค้ดที่จะรีดีม
+local CODES = {
+    "100K!",
+    "200KCCU",
+    "SorryForRestart",
+    "sorryforguilds",
+    "AE#1",
+    "SorryForBugs",
+    "EXPEDITIONS",
+    "30KLIKES!",
+    "EA+",
+    "EA",
+    "Release",
+}
+
+-- ============================================================
+--  ฟังก์ชันกดปุ่ม
+-- ============================================================
+local function clickButton(button)
+    if button and (button:IsA("TextButton") or button:IsA("ImageButton")) then
+        for _, connection in ipairs(getconnections(button.MouseButton1Click)) do
+            connection:Fire()
+        end
+        for _, connection in ipairs(getconnections(button.MouseButton1Down)) do
+            connection:Fire()
+        end
+        for _, connection in ipairs(getconnections(button.Activated)) do
+            connection:Fire()
+        end
+    end
+end
+
+-- ยิงทุก event (ปุ่มทั่วไป/มือถือ)
+local function fireAll(obj)
+    if not obj then return false end
+    pcall(function() firesignal(obj.MouseButton1Click) end)
+    pcall(function() firesignal(obj.MouseButton1Down) end)
+    pcall(function() firesignal(obj.MouseButton1Up) end)
+    pcall(function() firesignal(obj.Activated) end)
+    pcall(function() firesignal(obj.TouchTap) end)
+    pcall(function()
+        for _, c in pairs(getconnections(obj.MouseButton1Click)) do c:Fire() end
+    end)
+    return true
+end
+
+-- กดผ่าน SelectedObject + Enter (ProximityPrompt)
+local function clickViaSelect(obj)
+    if not obj then return false end
+    GuiService.SelectedObject = obj
+    task.wait(0.1)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+    GuiService.SelectedObject = nil
+    return true
+end
+
+-- ============================================================
+--  PRE-RUN: Prompt เริ่มต้น
+-- ============================================================
+local function clickInitialPrompts()
+    local promptGui = player.PlayerGui:FindFirstChild("Prompt")
+    if not promptGui then
+        print("ไม่มี Prompt — ข้าม")
+        return false
+    end
+
+    local ok, selectBtn = pcall(function()
+        return promptGui.Frame.Frame.Frame.Folder.Frame.Frame.Frame.Folder.Frame.TextButton
+    end)
+    if ok and selectBtn then
+        print("กดปุ่มเลือกตัว (Prompt)")
+        clickButton(selectBtn)
+        task.wait(0.3)
+    end
+
+    local ok2, confirmBtn = pcall(function()
+        return promptGui.Frame.Frame.Frame.Frame.PrimaryButton
+    end)
+    if ok2 and confirmBtn then
+        print("กดปุ่มยืนยัน (Prompt)")
+        clickButton(confirmBtn)
+        task.wait(0.3)
+    end
+
+    return true
+end
+
+-- ============================================================
+--  PRE-RUN: รีดีมโค้ด
+-- ============================================================
+local function redeemAllCodes()
+    local ok, Nodes = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Nodes"))
+    end)
+    if not ok or not Nodes then
+        warn("โหลด Nodes ไม่ได้ — ข้ามรีดีมโค้ด")
+        return
+    end
+
+    print("=== เริ่มรีดีมโค้ด ===")
+    for _, code in ipairs(CODES) do
+        local okReq, result = pcall(function()
+            local req = Nodes.CLAIM_CODE:Request(code)
+            req:Timeout(5)
+            return req:Wait()
+        end)
+        if okReq then
+            print("โค้ด", code, "->", result)
+        else
+            warn("โค้ด", code, "ล้มเหลว:", result)
+        end
+        task.wait(0.5)
+    end
+    print("=== รีดีมโค้ดครบแล้ว ===")
+end
+
+-- ============================================================
+--  PRE-RUN: เช็ค/เลือก/สุ่มตัวละครให้ครบ 3
+-- ============================================================
+local function getScroll()
+    local ok, scroll = pcall(function()
+        return player.PlayerGui.UnitInventory.Frame.Frame.Frame.Frame:GetChildren()[4].Frame.ScrollingFrame
+    end)
+    if ok then return scroll end
+    return nil
+end
+
+local function getButtonName(btn)
+    for _, obj in pairs(btn:GetDescendants()) do
+        if obj:IsA("TextLabel") then
+            local text = obj.Text
+            if not string.find(text, "¥") and not string.find(text, "Lvl") and text ~= "" then
+                return text
+            end
+        end
+    end
+    return nil
+end
+
+-- อ่านสถานะปุ่มยืนยัน: "Equip" / "Unequip" / nil
+local function getConfirmState()
+    local ok, pb = pcall(function()
+        return player.PlayerGui.UnitInventory.Frame.Frame.Frame:GetChildren()[5].Frame.PrimaryButton
+    end)
+    if not ok or not pb then return nil, nil end
+    for _, o in ipairs(pb:GetDescendants()) do
+        if o:IsA("TextLabel") and o.Text ~= "" then
+            return o.Text, pb
+        end
+    end
+    return nil, pb
+end
+
+-- นับตัวที่ลงสนาม (WorldModel ที่ BottomHUD)
+local function countPlacedUnits()
+    local ok, target = pcall(function()
+        return player.PlayerGui.BottomHUD:GetChildren()[2]:GetChildren()[5]
+    end)
+    if not ok or not target then return 0 end
+    local n = 0
+    for _, obj in ipairs(target:GetDescendants()) do
+        if obj:IsA("WorldModel") then n = n + 1 end
+    end
+    return n
+end
+
+local function openInventory()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.LeftHUD.Frame.Frame.Frame:GetChildren()[5]
+    end)
+    if ok and btn then fireAll(btn) return true end
+    return false
+end
+
+local function closeInventory()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.UnitInventory.Frame.Folder.Frame.PrimaryButton
+    end)
+    if ok and btn then fireAll(btn) return true end
+    return false
+end
+
+-- นับ TextButton ในกระเป๋า
+local function countInventoryButtons()
+    local scroll = getScroll()
+    if not scroll then return 0 end
+    local n = 0
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then n = n + 1 end
+    end
+    return n
+end
+
+-- เลือกตัวเพิ่ม need ตัว: กดเฉพาะที่สถานะเป็น "Equip"
+local function selectUnits(need)
+    local scroll = getScroll()
+    if not scroll then warn("ไม่เจอ ScrollingFrame") return 0 end
+
+    local allNames = {}
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            local name = getButtonName(child)
+            if name and not table.find(allNames, name) then
+                table.insert(allNames, name)
+            end
+        end
+    end
+
+    local count = 0
+
+    for _, nameToFind in ipairs(allNames) do
+        if count >= need then break end
+        scroll = getScroll()
+        if not scroll then break end
+
+        local targetButton = nil
+        for _, child in ipairs(scroll:GetChildren()) do
+            if child:IsA("TextButton") and getButtonName(child) == nameToFind then
+                targetButton = child
+                break
+            end
+        end
+
+        if targetButton then
+            fireAll(targetButton)
+            task.wait(0.8)
+
+            local state, confirmBtn = getConfirmState()
+            if state == "Equip" then
+                print("เลือก:", nameToFind, "(Equip → กดใช้)")
+                fireAll(confirmBtn)
+                count = count + 1
+                task.wait(1.2)
+            elseif state == "Unequip" then
+                print("ข้าม:", nameToFind, "(ใช้อยู่แล้ว)")
+                task.wait(0.2)
+            else
+                print("อ่านสถานะไม่ได้:", nameToFind)
+                task.wait(0.2)
+            end
+        end
+    end
+    return count
+end
+
+-- สุ่มตัวละคร (วาป → ProximityPrompt → สุ่ม → รีจอยน์)
+local function doSummon()
+    local ok, warpBtn = pcall(function()
+        return player.PlayerGui.LeftHUD.Frame.Frame.Frame:GetChildren()[8]
+    end)
+    if ok and warpBtn then
+        print("กดวาป")
+        fireAll(warpBtn)
+        task.wait(2)
+    end
+
+    local ok2, promptBtn = pcall(function()
+        return player.PlayerGui.ProximityPrompt.Frame.Frame.Folder.Frame.TextButton
+    end)
+    if ok2 and promptBtn then
+        print("เลือกตัวใน ProximityPrompt")
+        clickViaSelect(promptBtn)
+        task.wait(0.5)
+    end
+
+    local ok3, summonBtn = pcall(function()
+        return player.PlayerGui.Summon.Frame.Frame.Frame.Frame.Frame.Frame:GetChildren()[5]
+    end)
+    if ok3 and summonBtn then
+        print("กดสุ่ม")
+        fireAll(summonBtn)
+        task.wait(1.5)
+    end
+
+    -- รีจอยน์เข้าเซิร์ฟเวอร์เดิมใหม่
+    print("สุ่มเสร็จ → รีจอยน์...")
+    local TeleportService = game:GetService("TeleportService")
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+    task.wait(10)
+end
+
+-- ลูป pre-run หลัก: เช็ค WorldModel → ครบ 3 จบ, ไม่ครบเลือกเติม, กระเป๋าไม่พอไปสุ่ม
+local function ensureThreePlaced()
+    for attempt = 1, 30 do
+        local placed = countPlacedUnits()
+        print("เช็ครอบ", attempt, ": ลงสนามแล้ว", placed, "/3")
+
+        if placed >= 3 then
+            print("ครบ 3 ตัวแล้ว! ไปต่อ")
+            return true
+        end
+
+        local need = 3 - placed
+        openInventory()
+        task.wait(1)
+
+        local invCount = countInventoryButtons()
+        print("ในกระเป๋ามี", invCount, "ตัว | ขาดอีก", need)
+
+        if invCount > 0 then
+            local got = selectUnits(need)
+            print("เลือกเพิ่มได้", got, "ตัว")
+            closeInventory()
+            task.wait(1)
+            if got == 0 then
+                print("เลือกไม่ได้ → ไปสุ่ม")
+                doSummon()
+                task.wait(1)
+            end
+        else
+            print("กระเป๋าว่าง → ไปสุ่ม")
+            closeInventory()
+            task.wait(0.5)
+            doSummon()
+            task.wait(1)
+        end
+    end
+    warn("ครบ 30 รอบแล้วยังไม่ถึง 3")
+    return false
+end
+
+local function runPreRun()
+    clickInitialPrompts()
+    task.wait(0.5)
+    ensureThreePlaced()
+    task.wait(0.5)
+    redeemAllCodes()
+end
+
+-- ============================================================
+--  ปุ่มพิเศษ (กดก่อนปุ่ม 4 ทุกครั้ง)
+-- ============================================================
+local function clickPreButton4()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.Play:GetChildren()[2].Frame.Frame.Folder.Frame.Frame.Frame.Frame.Frame:GetChildren()[4]:GetChildren()[5].Frame.Frame.Frame.Frame.ScrollingFrame:GetChildren()[8].Frame:GetChildren()[3]
+    end)
+    if ok and btn then
+        clickButton(btn)
+        return true
+    end
+    return false
+end
+
+-- ============================================================
+--  เปิด/ปิดหน้า Settings
+-- ============================================================
+local function openSettings()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.TopBar.Frame:GetChildren()[4].Frame:GetChildren()[4].Folder.Frame.TextButton
+    end)
+    if ok and btn then
+        print("กดเปิดหน้า Settings")
+        clickButton(btn)
+        return true
+    else
+        warn("ไม่พบปุ่มเปิด Settings")
+        return false
+    end
+end
+
+local function closeSettings()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.Settings.Frame.Folder.Frame.PrimaryButton
+    end)
+    if ok and btn then
+        print("กดปิดหน้า Settings")
+        clickButton(btn)
+        return true
+    else
+        warn("ไม่พบปุ่มปิด Settings")
+        return false
+    end
+end
+
+-- ============================================================
+--  เช็ค + เปิด auto settings
+-- ============================================================
+local function findToggleButton(settingName)
+    for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
+        if obj:IsA("TextLabel") and obj.Text == settingName then
+            local ancestor = obj.Parent
+            for _ = 1, 4 do
+                if not ancestor then break end
+                local btn = ancestor:FindFirstChild("PrimaryButton", true)
+                if btn then return btn end
+                ancestor = ancestor.Parent
+            end
+        end
+    end
+    return nil
+end
+
+local function isEnabled(button)
+    for _, obj in ipairs(button:GetDescendants()) do
+        if obj:IsA("ImageLabel") then
+            if obj.Image == CHECK_ICON then
+                return true
+            elseif obj.Image == CROSS_ICON then
+                return false
+            end
+        end
+    end
+    return nil
+end
+
+local function enableAllAutoSettings()
+    print("=== เช็ค + เปิด auto settings ===")
+    for _, settingName in ipairs(SETTINGS_TO_ENABLE) do
+        local btn = findToggleButton(settingName)
+        if btn then
+            local enabled = isEnabled(btn)
+            if enabled == false then
+                print("เปิด '" .. settingName .. "' (เดิมปิดอยู่)")
+                clickButton(btn)
+            elseif enabled == true then
+                print("'" .. settingName .. "' เปิดอยู่แล้ว")
+            end
+        else
+            warn("ไม่พบปุ่ม:", settingName)
+        end
+        task.wait(0.2)
+    end
+end
+
+-- ============================================================
+--  ปุ่ม Notification
+-- ============================================================
+local function getNotificationButton()
+    local ok, notifButton = pcall(function()
+        return player.PlayerGui.Notifications.Frame.Frame.Frame:GetChildren()[4].Frame.PrimaryButton
+    end)
+    if ok and notifButton then
+        return notifButton
+    end
+    return nil
+end
+
+local function clickNotificationButton()
+    local btn = getNotificationButton()
+    if btn then
+        print("กดปุ่ม Notification")
+        clickButton(btn)
+        return true
+    else
+        warn("ไม่พบปุ่ม Notification")
+        return false
+    end
+end
+
+-- กดปุ่ม BottomHUD หลังกดแจ้งเตือน
+local function clickBottomHUDButton()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.BottomHUD.Frame.Frame:GetChildren()[6].TextButton
+    end)
+    if ok and btn then
+        print("กดปุ่ม BottomHUD [6]")
+        fireAll(btn)
+        return true
+    end
+    warn("ไม่พบปุ่ม BottomHUD [6]")
+    return false
+end
+
+-- ============================================================
+--  เลือก slot + วางตัวละคร
+-- ============================================================
+local function selectSlot(slotNumber)
+    local ok = pcall(function()
+        Event:FireServer(66, "SelectSlot", slotNumber)
+    end)
+    if ok then print("เลือก slot", slotNumber) end
+    return ok
+end
+
+local function placeUnitAt(slotNumber, targetCFrame)
+    local ok = pcall(function()
+        Event:FireServer(65, "PlaceGameUnit", slotNumber, targetCFrame)
+    end)
+    if ok then print("วางตัวละคร slot", slotNumber, "ที่", targetCFrame.Position) end
+    return ok
+end
+
+local function runQueue(queue)
+    for _, entry in ipairs(queue) do
+        selectSlot(entry.slot)
+        task.wait(0.3)
+        placeUnitAt(entry.slot, entry.cframe)
+        task.wait(0.5)
+    end
+end
+
+local function runPlacementQueue()
+    print("=== เริ่มวางตัวละคร (หลัก) ===")
+    runQueue(PlacementQueue)
+    print("=== วางตัวหลักครบแล้ว ===")
+
+    task.wait(0.5)
+    print("=== วางตัวแยก (deferred) ===")
+    runQueue(DeferredPlacements)
+    print("=== วางตัวแยกครบแล้ว ===")
+end
+
+-- ============================================================
+--  setup + วางตัว + กด Notification
+-- ============================================================
+local function setupAndPlace()
+    openSettings()
+    task.wait(1)
+
+    enableAllAutoSettings()
+    task.wait(0.5)
+
+    local upgradeBtn = findToggleButton("Auto-Upgrade Placed Units")
+    if upgradeBtn and isEnabled(upgradeBtn) == true then
+        print("ยืนยัน: Auto-Upgrade เปิดเรียบร้อย")
+    else
+        warn("เตือน: Auto-Upgrade อาจยังไม่เปิด!")
+    end
+    task.wait(0.3)
+
+    closeSettings()
+    task.wait(0.5)
+
+    runPlacementQueue()
+
+    task.wait(0.5)
+    clickNotificationButton()
+    task.wait(0.5)
+    clickBottomHUDButton()
+end
+
+-- ============================================================
+--  Loop หลัก
+-- ============================================================
+
+-- เรียก pre-run ก่อนเข้า loop หลัก
+runPreRun()
+
+local lastState = ""
+local placementDone = false
+
+while true do
+    local playGui = game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("Play")
+    local leftHUD = game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("LeftHUD")
+
+    local skipCondition = false
+    if leftHUD and leftHUD:FindFirstChild("Frame") and
+       leftHUD.Frame:FindFirstChild("Frame") and
+       leftHUD.Frame.Frame:FindFirstChild("Frame") and
+       leftHUD.Frame.Frame.Frame:FindFirstChild("Frame") and
+       leftHUD.Frame.Frame.Frame.Frame:FindFirstChild("Frame") then
+        local skipFrame = leftHUD.Frame.Frame.Frame.Frame.Frame
+        if skipFrame.Visible == true then
+            skipCondition = true
+        end
+    end
+
+    local button5 = nil
+    if playGui and playGui:FindFirstChild("Frame") and
+       playGui.Frame:FindFirstChild("Frame") and
+       playGui.Frame.Frame:FindFirstChild("Frame") and
+       playGui.Frame.Frame.Frame:FindFirstChild("Frame") and
+       playGui.Frame.Frame.Frame.Frame:FindFirstChild("Frame") and
+       playGui.Frame.Frame.Frame.Frame.Frame:FindFirstChild("Frame") and
+       playGui.Frame.Frame.Frame.Frame.Frame.Frame:FindFirstChild("Frame") then
+        local children5 = playGui.Frame.Frame.Frame.Frame.Frame.Frame.Frame:GetChildren()
+        if children5 and children5[6] then
+            button5 = children5[6]:FindFirstChild("PrimaryButton")
+        end
+    end
+
+    if button5 and button5.Visible == true then
+        print("พบปุ่มที่ห้าแล้ว! กำลังกดและเสร็จสิ้นขั้นตอน...")
+        clickButton(button5)
+        break
+
+    elseif skipCondition then
+        if not placementDone then
+            if lastState ~= "skip" then
+                print("ตรวจพบหน้าต่างพิเศษ! เริ่ม setup + วางตัวละคร...")
+                lastState = "skip"
+            end
+            setupAndPlace()
+            placementDone = true
+        else
+            local notifBtn = getNotificationButton()
+            if notifBtn and notifBtn.Visible == true then
+                print("แจ้งเตือนโผล่มาอีกรอบ! กด + วางตัวละครใหม่...")
+                clickNotificationButton()
+                task.wait(0.5)
+                runPlacementQueue()
+                task.wait(0.5)
+                clickNotificationButton()
+                task.wait(0.5)
+                clickBottomHUDButton()
+            end
+        end
+
+    else
+        placementDone = false
+
+        local button1 = nil
+        if leftHUD and leftHUD:FindFirstChild("Frame") and leftHUD.Frame:FindFirstChild("Frame") and leftHUD.Frame.Frame:FindFirstChild("Frame") then
+            button1 = leftHUD.Frame.Frame.Frame:GetChildren()[10]
+        end
+
+        local button2 = nil
+        if playGui and playGui:FindFirstChild("Frame") and playGui.Frame:FindFirstChild("Frame") and playGui.Frame.Frame:FindFirstChild("Frame") and playGui.Frame.Frame.Frame:FindFirstChild("Frame") and playGui.Frame.Frame.Frame.Frame:FindFirstChild("ScrollingFrame") and playGui.Frame.Frame.Frame.Frame.ScrollingFrame:FindFirstChild("Frame") and playGui.Frame.Frame.Frame.Frame.ScrollingFrame.Frame:FindFirstChild("Frame") and playGui.Frame.Frame.Frame.Frame.ScrollingFrame.Frame.Frame:FindFirstChild("Frame") and playGui.Frame.Frame.Frame.Frame.ScrollingFrame.Frame.Frame.Frame:FindFirstChild("Frame") then
+            button2 = playGui.Frame.Frame.Frame.Frame.ScrollingFrame.Frame.Frame.Frame.Frame:FindFirstChild("TextButton")
+        end
+
+        local button3 = nil
+        if playGui and playGui:GetChildren()[2] then
+            local child2 = playGui:GetChildren()[2]
+            if child2:FindFirstChild("Frame") and child2.Frame:FindFirstChild("Frame") and child2.Frame.Frame:FindFirstChild("Frame") and child2.Frame.Frame.Frame:FindFirstChild("Frame") and child2.Frame.Frame.Frame.Frame:FindFirstChild("Frame") and child2.Frame.Frame.Frame.Frame.Frame:FindFirstChild("ScrollingFrame") and child2.Frame.Frame.Frame.Frame.Frame.ScrollingFrame:FindFirstChild("Frame") then
+                button3 = child2.Frame.Frame.Frame.Frame.Frame.ScrollingFrame.Frame:FindFirstChild("TextButton")
+            end
+        end
+
+        local button4 = nil
+        if playGui and playGui:GetChildren()[2] then
+            local child2 = playGui:GetChildren()[2]
+            if child2:FindFirstChild("Frame") and child2.Frame:FindFirstChild("Frame") and child2.Frame.Frame:FindFirstChild("Folder") then
+                local folder = child2.Frame.Frame.Folder
+                if folder:FindFirstChild("Frame") and folder.Frame:FindFirstChild("Frame") and folder.Frame.Frame:FindFirstChild("Frame") and folder.Frame.Frame.Frame:FindFirstChild("Frame") and folder.Frame.Frame.Frame.Frame:FindFirstChild("Frame") then
+                    local frame5 = folder.Frame.Frame.Frame.Frame.Frame
+                    local children4 = frame5:GetChildren()
+                    if children4 and children4[4] then
+                        local children5 = children4[4]:GetChildren()
+                        if children5 and children5[5] then
+                            local childrenSub4 = children5[5]:GetChildren()
+                            if childrenSub4 and childrenSub4[4] then
+                                button4 = childrenSub4[4]:FindFirstChild("PrimaryButton")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if button4 and button4.Visible == true then
+            if lastState ~= "button4" then print("พบปุ่มที่สี่! กดปุ่มพิเศษก่อน แล้วกดปุ่ม 4...") lastState = "button4" end
+            clickPreButton4()
+            task.wait(0.1)
+            clickButton(button4)
+        elseif button3 and button3.Visible == true then
+            if lastState ~= "button3" then print("พบปุ่มที่สาม! กำลังกด...") lastState = "button3" end
+            clickButton(button3)
+        elseif button2 and button2.Visible == true then
+            if lastState ~= "button2" then print("พบปุ่มที่สอง! กำลังกด...") lastState = "button2" end
+            clickButton(button2)
+        elseif button1 and button1:IsA("TextButton") and button1.Visible == true then
+            if lastState ~= "button1" then print("กำลังกดปุ่มแรก...") lastState = "button1" end
+            clickButton(button1)
+        end
+    end
+
+    task.wait(0.15)
+end
