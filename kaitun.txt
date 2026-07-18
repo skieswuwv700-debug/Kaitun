@@ -95,6 +95,11 @@ local CODES = {
     "Release",
 }
 
+-- ตัวที่ไม่ต้องการใช้ (ข้าม/ถอด)
+local SKIP_UNITS = {
+    ["Ramen Guy"] = true,
+}
+
 -- ============================================================
 --  ฟังก์ชันกดปุ่ม
 -- ============================================================
@@ -275,7 +280,32 @@ local function countInventoryButtons()
     return n
 end
 
--- เลือกตัวเพิ่ม need ตัว: กดเฉพาะที่สถานะเป็น "Equip"
+-- ถอด Ramen Guy ถ้าถูกใช้อยู่ (เรียกตอนเปิดกระเป๋าอยู่แล้ว)
+local function removeSkippedUnits()
+    local scroll = getScroll()
+    if not scroll then return end
+
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            local name = getButtonName(child)
+            if name and SKIP_UNITS[name] then
+                fireAll(child)
+                task.wait(0.8)
+                local state, confirmBtn = getConfirmState()
+                if state == "Unequip" then
+                    print("พบ", name, "ใช้อยู่ → กดถอด")
+                    fireAll(confirmBtn)
+                    task.wait(1)
+                else
+                    print(name, "ไม่ได้ใช้อยู่ → ปล่อยไว้")
+                    task.wait(0.2)
+                end
+            end
+        end
+    end
+end
+
+-- เลือกตัวเพิ่ม need ตัว: กดเฉพาะที่สถานะเป็น "Equip" (ข้ามตัวใน SKIP_UNITS)
 local function selectUnits(need)
     local scroll = getScroll()
     if not scroll then warn("ไม่เจอ ScrollingFrame") return 0 end
@@ -294,33 +324,38 @@ local function selectUnits(need)
 
     for _, nameToFind in ipairs(allNames) do
         if count >= need then break end
-        scroll = getScroll()
-        if not scroll then break end
 
-        local targetButton = nil
-        for _, child in ipairs(scroll:GetChildren()) do
-            if child:IsA("TextButton") and getButtonName(child) == nameToFind then
-                targetButton = child
-                break
+        if SKIP_UNITS[nameToFind] then
+            print("ข้าม:", nameToFind, "(ตัวที่ไม่ใช้)")
+        else
+            scroll = getScroll()
+            if not scroll then break end
+
+            local targetButton = nil
+            for _, child in ipairs(scroll:GetChildren()) do
+                if child:IsA("TextButton") and getButtonName(child) == nameToFind then
+                    targetButton = child
+                    break
+                end
             end
-        end
 
-        if targetButton then
-            fireAll(targetButton)
-            task.wait(0.8)
+            if targetButton then
+                fireAll(targetButton)
+                task.wait(0.8)
 
-            local state, confirmBtn = getConfirmState()
-            if state == "Equip" then
-                print("เลือก:", nameToFind, "(Equip → กดใช้)")
-                fireAll(confirmBtn)
-                count = count + 1
-                task.wait(1.2)
-            elseif state == "Unequip" then
-                print("ข้าม:", nameToFind, "(ใช้อยู่แล้ว)")
-                task.wait(0.2)
-            else
-                print("อ่านสถานะไม่ได้:", nameToFind)
-                task.wait(0.2)
+                local state, confirmBtn = getConfirmState()
+                if state == "Equip" then
+                    print("เลือก:", nameToFind, "(Equip → กดใช้)")
+                    fireAll(confirmBtn)
+                    count = count + 1
+                    task.wait(1.2)
+                elseif state == "Unequip" then
+                    print("ข้าม:", nameToFind, "(ใช้อยู่แล้ว)")
+                    task.wait(0.2)
+                else
+                    print("อ่านสถานะไม่ได้:", nameToFind)
+                    task.wait(0.2)
+                end
             end
         end
     end
@@ -403,12 +438,25 @@ local function ensureThreePlaced()
     return false
 end
 
+-- เปิดกระเป๋าถอด Ramen Guy (ถ้าใช้อยู่) แล้วเติมให้ครบ 3
+local function cleanRamenAndRefill()
+    print("=== เช็ค Ramen Guy หลังรีดีมโค้ด ===")
+    openInventory()
+    task.wait(1.5)
+    removeSkippedUnits()
+    closeInventory()
+    task.wait(1)
+    ensureThreePlaced()
+end
+
 local function runPreRun()
     clickInitialPrompts()
     task.wait(0.5)
     ensureThreePlaced()
     task.wait(0.5)
     redeemAllCodes()
+    task.wait(0.5)
+    cleanRamenAndRefill()
 end
 
 -- ============================================================
