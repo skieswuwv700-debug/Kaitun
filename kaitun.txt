@@ -68,16 +68,15 @@ do
     end
 end
 
-local CHECK_ICON = "rbxassetid://139144590557777"
-local CROSS_ICON = "rbxassetid://89701503974482"
-
+-- setting ที่ต้องการเปิด (ชื่อภายในเกม ใช้กับ ChangeSetting)
 local SETTINGS_TO_ENABLE = {
-    "Auto-Upgrade Placed Units",
-    "Strict Auto-Upgrade Priority",
-    "Auto Abilities on Placement",
-    "Auto-Place Phantoms",
-    "Auto Skip Waves",
-    "Auto Retry",
+    "DisplayPinnedQuests",
+    "AutoUpgradePlacedUnits",
+    "StrictAutoUpgradePriority",
+    "AutoAbilitiesOnPlacement",
+    "AutoPlacePhantoms",
+    "AutoSkipWaves",
+    "AutoRetry",
 }
 
 -- โค้ดที่จะรีดีม
@@ -141,6 +140,33 @@ local function clickViaSelect(obj)
     task.wait(0.05)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
     GuiService.SelectedObject = nil
+    return true
+end
+
+-- ============================================================
+--  เปิด auto settings ผ่าน Actions.ChangeSetting
+-- ============================================================
+local function enableAllAutoSettings()
+    local ok, Actions = pcall(function()
+        return require(ReplicatedStorage.FusionPackage.Actions)
+    end)
+    if not ok or type(Actions) ~= "table" or type(Actions.ChangeSetting) ~= "function" then
+        warn("โหลด Actions.ChangeSetting ไม่ได้ — ข้ามการเปิด settings")
+        return false
+    end
+
+    print("=== เปิด auto settings ===")
+    for _, name in ipairs(SETTINGS_TO_ENABLE) do
+        local ok2, err = pcall(function()
+            Actions.ChangeSetting(name, true)
+        end)
+        if ok2 then
+            print("  เปิด:", name)
+        else
+            warn("  ล้มเหลว:", name, err)
+        end
+        task.wait(0.2)
+    end
     return true
 end
 
@@ -281,7 +307,7 @@ local function countInventoryButtons()
     return n
 end
 
--- ถอด Ramen Guy ถ้าถูกใช้อยู่ (เรียกตอนเปิดกระเป๋าอยู่แล้ว)
+-- ถอดตัวใน SKIP_UNITS ถ้าถูกใช้อยู่
 local function removeSkippedUnits()
     local scroll = getScroll()
     if not scroll then return end
@@ -392,14 +418,13 @@ local function doSummon()
         task.wait(1.5)
     end
 
-    -- รีจอยน์เข้าเซิร์ฟเวอร์เดิมใหม่
     print("สุ่มเสร็จ → รีจอยน์...")
     local TeleportService = game:GetService("TeleportService")
     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
     task.wait(10)
 end
 
--- ลูป pre-run หลัก: เช็ค WorldModel → ครบ 3 จบ, ไม่ครบเลือกเติม, กระเป๋าไม่พอไปสุ่ม
+-- ลูป pre-run: เช็ค WorldModel → ครบ 3 จบ, ไม่ครบเลือกเติม, กระเป๋าไม่พอไปสุ่ม
 local function ensureThreePlaced()
     for attempt = 1, 30 do
         local placed = countPlacedUnits()
@@ -439,9 +464,9 @@ local function ensureThreePlaced()
     return false
 end
 
--- เปิดกระเป๋าถอด Ramen Guy (ถ้าใช้อยู่) แล้วเติมให้ครบ 3
+-- เปิดกระเป๋าถอดตัวที่ไม่ใช้ แล้วเติมให้ครบ 3
 local function cleanRamenAndRefill()
-    print("=== เช็ค Ramen Guy หลังรีดีมโค้ด ===")
+    print("=== เช็คตัวที่ไม่ใช้ หลังรีดีมโค้ด ===")
     openInventory()
     task.wait(1.5)
     removeSkippedUnits()
@@ -454,6 +479,8 @@ local function runPreRun()
     clickInitialPrompts()
     task.wait(0.5)
     ensureThreePlaced()
+    task.wait(0.5)
+    enableAllAutoSettings()
     task.wait(0.5)
     redeemAllCodes()
     task.wait(0.5)
@@ -472,87 +499,6 @@ local function clickPreButton4()
         return true
     end
     return false
-end
-
--- ============================================================
---  เปิด/ปิดหน้า Settings
--- ============================================================
-local function openSettings()
-    local ok, btn = pcall(function()
-        return player.PlayerGui.TopBar.Frame:GetChildren()[4].Frame:GetChildren()[4].Folder.Frame.TextButton
-    end)
-    if ok and btn then
-        print("กดเปิดหน้า Settings")
-        clickButton(btn)
-        return true
-    else
-        warn("ไม่พบปุ่มเปิด Settings")
-        return false
-    end
-end
-
-local function closeSettings()
-    local ok, btn = pcall(function()
-        return player.PlayerGui.Settings.Frame.Folder.Frame.PrimaryButton
-    end)
-    if ok and btn then
-        print("กดปิดหน้า Settings")
-        clickButton(btn)
-        return true
-    else
-        warn("ไม่พบปุ่มปิด Settings")
-        return false
-    end
-end
-
--- ============================================================
---  เช็ค + เปิด auto settings
--- ============================================================
-local function findToggleButton(settingName)
-    for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
-        if obj:IsA("TextLabel") and obj.Text == settingName then
-            local ancestor = obj.Parent
-            for _ = 1, 4 do
-                if not ancestor then break end
-                local btn = ancestor:FindFirstChild("PrimaryButton", true)
-                if btn then return btn end
-                ancestor = ancestor.Parent
-            end
-        end
-    end
-    return nil
-end
-
-local function isEnabled(button)
-    for _, obj in ipairs(button:GetDescendants()) do
-        if obj:IsA("ImageLabel") then
-            if obj.Image == CHECK_ICON then
-                return true
-            elseif obj.Image == CROSS_ICON then
-                return false
-            end
-        end
-    end
-    return nil
-end
-
-local function enableAllAutoSettings()
-    print("=== เช็ค + เปิด auto settings ===")
-    for _, settingName in ipairs(SETTINGS_TO_ENABLE) do
-        local btn = findToggleButton(settingName)
-        if btn then
-            local enabled = isEnabled(btn)
-            if enabled == false then
-                print("เปิด '" .. settingName .. "' (เดิมปิดอยู่)")
-                clickButton(btn)
-            elseif enabled == true then
-                print("'" .. settingName .. "' เปิดอยู่แล้ว")
-            end
-        else
-            warn("ไม่พบปุ่ม:", settingName)
-        end
-        task.wait(0.2)
-    end
 end
 
 -- ============================================================
@@ -637,21 +583,7 @@ end
 --  setup + วางตัว + กด Notification
 -- ============================================================
 local function setupAndPlace()
-    openSettings()
-    task.wait(1)
-
     enableAllAutoSettings()
-    task.wait(0.5)
-
-    local upgradeBtn = findToggleButton("Auto-Upgrade Placed Units")
-    if upgradeBtn and isEnabled(upgradeBtn) == true then
-        print("ยืนยัน: Auto-Upgrade เปิดเรียบร้อย")
-    else
-        warn("เตือน: Auto-Upgrade อาจยังไม่เปิด!")
-    end
-    task.wait(0.3)
-
-    closeSettings()
     task.wait(0.5)
 
     runPlacementQueue()
@@ -666,7 +598,6 @@ end
 --  Loop หลัก
 -- ============================================================
 
--- เรียก pre-run ก่อนเข้า loop หลัก
 runPreRun()
 
 local lastState = ""
@@ -720,6 +651,8 @@ while true do
             if notifBtn and notifBtn.Visible == true then
                 print("แจ้งเตือนโผล่มาอีกรอบ! กด + วางตัวละครใหม่...")
                 clickNotificationButton()
+                task.wait(0.5)
+                enableAllAutoSettings()
                 task.wait(0.5)
                 runPlacementQueue()
                 task.wait(0.5)
