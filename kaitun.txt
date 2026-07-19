@@ -68,6 +68,53 @@ do
     end
 end
 
+-- ============================================================
+--  ANTI-AFK: บินสลับตำแหน่งกันโดนเตะ
+-- ============================================================
+local TweenService = game:GetService("TweenService")
+
+local ANTIAFK_INTERVAL = 30   -- สลับตำแหน่งทุกกี่วิ
+local ANTIAFK_TWEEN = 2       -- บินใช้เวลากี่วิ
+
+-- รวมตำแหน่งจากคอนฟิกด้านบน
+local AntiAfkPositions = {}
+for _, pos in pairs(SlotStartPos) do
+    table.insert(AntiAfkPositions, pos)
+end
+for _, list in pairs(ExtraPositions) do
+    for _, cf in ipairs(list) do
+        table.insert(AntiAfkPositions, cf.Position)
+    end
+end
+
+local function flyTo(pos)
+    local char = player.Character
+    if not char then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
+    local tween = TweenService:Create(
+        root,
+        TweenInfo.new(ANTIAFK_TWEEN, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+        { CFrame = CFrame.new(pos + Vector3.new(0, 3, 0)) }
+    )
+    tween:Play()
+    tween.Completed:Wait()
+    return true
+end
+
+task.spawn(function()
+    local index = 1
+    while task.wait(ANTIAFK_INTERVAL) do
+        local pos = AntiAfkPositions[index]
+        if pos then
+            pcall(function() flyTo(pos) end)
+        end
+        index = index + 1
+        if index > #AntiAfkPositions then index = 1 end
+    end
+end)
+
 local CHECK_ICON = "rbxassetid://139144590557777"
 local CROSS_ICON = "rbxassetid://89701503974482"
 
