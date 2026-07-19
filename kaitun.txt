@@ -679,11 +679,9 @@ local function runPlacementQueue()
 end
 
 -- ============================================================
---  setup + วางตัว (ไม่กด notif ในนี้แล้ว)
+--  setup + วางตัว (ตัด enableAllAutoSettings ออกแล้ว)
 -- ============================================================
 local function setupAndPlace()
-    enableAllAutoSettings()
-    task.wait(0.5)
     runPlacementQueue()
 end
 
@@ -723,7 +721,6 @@ while true do
     local notifBtn = getNotificationButton()
 
     if notifBtn and notifBtn.Visible == true then
-        -- แจ้งเตือนโผล่ = รอบใหม่
         print("แจ้งเตือนโผล่มา! รีรอบใหม่...")
         clickNotificationButton()
         task.wait(0.5)
@@ -733,7 +730,7 @@ while true do
         lastState = ""
 
     elseif not placementDone then
-        print("เริ่ม setup + วางตัวละคร...")
+        print("เริ่มวางตัวละคร...")
         setupAndPlace()
         placementDone = true
     end
