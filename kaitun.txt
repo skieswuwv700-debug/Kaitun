@@ -68,15 +68,17 @@ do
     end
 end
 
--- setting ที่ต้องการเปิด (ชื่อภายในเกม ใช้กับ ChangeSetting)
+local CHECK_ICON = "rbxassetid://139144590557777"
+local CROSS_ICON = "rbxassetid://89701503974482"
+
+-- ชื่อ setting ตามที่แสดงใน UI
 local SETTINGS_TO_ENABLE = {
-    "DisplayPinnedQuests",
-    "AutoUpgradePlacedUnits",
-    "StrictAutoUpgradePriority",
-    "AutoAbilitiesOnPlacement",
-    "AutoPlacePhantoms",
-    "AutoSkipWaves",
-    "AutoRetry",
+    "Auto-Upgrade Placed Units",
+    "Strict Auto-Upgrade Priority",
+    "Auto Abilities on Placement",
+    "Auto-Place Phantoms",
+    "Auto Skip Waves",
+    "Auto Retry",
 }
 
 -- โค้ดที่จะรีดีม
@@ -144,30 +146,98 @@ local function clickViaSelect(obj)
 end
 
 -- ============================================================
---  เปิด auto settings ผ่าน Actions.ChangeSetting
+--  เปิด/ปิดหน้า Settings + เปิด auto settings
 -- ============================================================
-local function enableAllAutoSettings()
-    local ok, Actions = pcall(function()
-        return require(ReplicatedStorage.FusionPackage.Actions)
+local function openSettings()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.TopBar.Frame:GetChildren()[4].Frame:GetChildren()[4].Folder.Frame.TextButton
     end)
-    if not ok or type(Actions) ~= "table" or type(Actions.ChangeSetting) ~= "function" then
-        warn("โหลด Actions.ChangeSetting ไม่ได้ — ข้ามการเปิด settings")
-        return false
+    if ok and btn then
+        clickButton(btn)
+        return true
+    end
+    warn("ไม่เจอปุ่มเปิด Settings")
+    return false
+end
+
+local function closeSettings()
+    local ok, btn = pcall(function()
+        return player.PlayerGui.Settings.Frame.Folder.Frame.PrimaryButton
+    end)
+    if ok and btn then
+        clickButton(btn)
+        return true
+    end
+    return false
+end
+
+-- หาปุ่ม toggle จากชื่อ setting
+local function findToggleButton(settingName)
+    for _, obj in ipairs(player.PlayerGui:GetDescendants()) do
+        if obj:IsA("TextLabel") and obj.Text == settingName then
+            local ancestor = obj.Parent
+            for _ = 1, 4 do
+                if not ancestor then break end
+                local btn = ancestor:FindFirstChild("PrimaryButton", true)
+                if btn then return btn end
+                ancestor = ancestor.Parent
+            end
+        end
+    end
+    return nil
+end
+
+-- อ่านสถานะจากไอคอน (ติ๊กถูก = เปิด, กากบาท = ปิด)
+local function isEnabled(button)
+    for _, obj in ipairs(button:GetDescendants()) do
+        if obj:IsA("ImageLabel") then
+            if obj.Image == CHECK_ICON then
+                return true
+            elseif obj.Image == CROSS_ICON then
+                return false
+            end
+        end
+    end
+    return nil
+end
+
+local function enableAllAutoSettings()
+    print("=== เปิด auto settings ===")
+    openSettings()
+    task.wait(1.5)
+
+    -- รอบที่ 1: เช็ค + เปิดตัวที่ยังปิด
+    for _, name in ipairs(SETTINGS_TO_ENABLE) do
+        local btn = findToggleButton(name)
+        if btn then
+            local state = isEnabled(btn)
+            if state == false then
+                print("  เปิด:", name)
+                clickButton(btn)
+                task.wait(0.4)
+            end
+        else
+            warn("  ไม่เจอปุ่ม:", name)
+        end
+        task.wait(0.3)
     end
 
-    print("=== เปิด auto settings ===")
+    task.wait(1)
+
+    -- รอบที่ 2: เช็คซ้ำ ตัวไหนยังปิดก็กดอีก
     for _, name in ipairs(SETTINGS_TO_ENABLE) do
-        local ok2, err = pcall(function()
-            Actions.ChangeSetting(name, true)
-        end)
-        if ok2 then
-            print("  เปิด:", name)
-        else
-            warn("  ล้มเหลว:", name, err)
+        local btn = findToggleButton(name)
+        if btn and isEnabled(btn) == false then
+            warn("  ยังปิดอยู่ กดอีกครั้ง:", name)
+            clickButton(btn)
+            task.wait(0.4)
         end
         task.wait(0.2)
     end
-    return true
+
+    task.wait(0.5)
+    closeSettings()
+    task.wait(0.5)
 end
 
 -- ============================================================
