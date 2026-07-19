@@ -76,7 +76,6 @@ local TweenService = game:GetService("TweenService")
 local ANTIAFK_INTERVAL = 30   -- สลับตำแหน่งทุกกี่วิ
 local ANTIAFK_TWEEN = 2       -- บินใช้เวลากี่วิ
 
--- รวมตำแหน่งจากคอนฟิกด้านบน
 local AntiAfkPositions = {}
 for _, pos in pairs(SlotStartPos) do
     table.insert(AntiAfkPositions, pos)
@@ -147,6 +146,7 @@ local CODES = {
 local SKIP_UNITS = {
     ["Ramen Guy"] = true,
     ["Stone Alchemist"] = true,
+    ["Curly Brow"] = true,
 }
 
 -- ============================================================
@@ -766,9 +766,7 @@ while true do
         else
             local notifBtn = getNotificationButton()
             if notifBtn and notifBtn.Visible == true then
-                print("แจ้งเตือนโผล่มาอีกรอบ! กด + วางตัวละครใหม่...")
-                clickNotificationButton()
-                task.wait(0.5)
+                print("แจ้งเตือนโผล่มา! เช็คตั้งค่า → วางตัว → กดแจ้งเตือน")
                 enableAllAutoSettings()
                 task.wait(0.5)
                 runPlacementQueue()
